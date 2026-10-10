@@ -1,0 +1,741 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Vorratsfinder</title>
+<meta name="description" content="Schrank fotografieren, Vorräte automatisch erkennen und später per Suche wiederfinden.">
+<meta name="theme-color" content="#f3f6f2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#101613" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Vorrat">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-512.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: phone-first single column; sticky search head, list grouped by storage place, camera bar pinned to the bottom. */
+:root {
+  --bg: #f3f6f2;
+  --surface: #ffffff;
+  --ink: #18261f;
+  --muted: #5b6a62;
+  --line: #dbe3dd;
+  --accent: #2b6a4c;
+  --accent-ink: #ffffff;
+  --tape: #e9b93a;
+  --tape-ink: #2a2008;
+  --mark: #fbe7a6;
+  --danger: #b3261e;
+  --shadow: 0 10px 30px rgba(20, 40, 30, .14);
+  --f-display: "Bricolage Grotesque", "Figtree", system-ui, sans-serif;
+  --f-body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --r: 14px;
+  color-scheme: light;
+  padding-top: env(safe-area-inset-top, 0px);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #101613; --surface: #19211d; --ink: #e5ece7; --muted: #94a59b; --line: #2a3530;
+    --accent: #6cc095; --accent-ink: #0d1a13; --tape: #e2b23a; --tape-ink: #241b05; --mark: #5a4a12;
+    --danger: #ff8a80; --shadow: 0 10px 30px rgba(0, 0, 0, .5); color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { background: var(--bg); }
+body { margin: 0; color: var(--ink); font: 16px/1.45 var(--f-body); -webkit-text-size-adjust: 100%; }
+img { max-width: 100%; }
+.wrap { max-width: 640px; margin: 0 auto; padding-inline: 16px; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 3px solid var(--tape); outline-offset: 2px; }
+
+/* Head */
+.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); padding-block: 14px 10px; border-bottom: 1px solid var(--line); }
+.brand { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.brand h1 { margin: 0; font: 800 1.6rem/1 var(--f-display); letter-spacing: -.02em; }
+.brand .right { display: flex; align-items: center; gap: 10px; }
+.brand .count { font: 500 .78rem var(--f-mono); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-variant-numeric: tabular-nums; }
+.gear { border: 0; background: transparent; width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; color: var(--muted); }
+.gear svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 2; }
+.search { margin-top: 12px; position: relative; }
+.search input { width: 100%; padding: 13px 44px 13px 44px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--surface); font-size: 17px; -webkit-appearance: none; appearance: none; }
+.search input:focus { border-color: var(--accent); outline: none; }
+.search input::-webkit-search-cancel-button { -webkit-appearance: none; display: none; }
+.search svg { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px; stroke: var(--muted); fill: none; stroke-width: 2; }
+.search .clear { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); border: 0; background: transparent; width: 34px; height: 34px; border-radius: 50%; color: var(--muted); font-size: 20px; }
+.chips { display: flex; gap: 8px; overflow-x: auto; padding-block: 10px 2px; scrollbar-width: none; margin-inline: -16px; padding-inline: 16px; }
+.chips::-webkit-scrollbar { display: none; }
+.chip { flex: none; border: 1.5px solid var(--line); background: var(--surface); padding: 6px 12px; border-radius: 999px; font-size: .88rem; font-weight: 500; white-space: nowrap; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+
+/* List */
+main { padding-block: 8px 140px; }
+.banner { margin-top: 14px; padding: 12px 14px; border-radius: var(--r); background: var(--mark); color: var(--ink); font-size: .92rem; display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.banner button { border: 0; background: transparent; text-decoration: underline; font-weight: 600; padding: 0; }
+.group { margin-top: 22px; }
+.tape { display: inline-flex; align-items: center; gap: 8px; background: var(--tape); color: var(--tape-ink); font: 500 .78rem var(--f-mono); text-transform: uppercase; letter-spacing: .08em; padding: 4px 10px 4px 8px; border-radius: 3px; transform: rotate(-.6deg); max-width: 100%; }
+.tape span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tape b { font-weight: 500; opacity: .7; }
+.rows { list-style: none; margin: 10px 0 0; padding: 0; background: var(--surface); border-radius: var(--r); border: 1px solid var(--line); overflow: hidden; }
+.row { display: grid; grid-template-columns: 46px 1fr auto; gap: 12px; align-items: center; padding: 10px 12px; border-top: 1px solid var(--line); width: 100%; text-align: left; background: transparent; border-left: 0; border-right: 0; border-bottom: 0; }
+.rows li:first-child .row { border-top: 0; }
+.row:active { background: var(--bg); }
+.thumb { width: 46px; height: 46px; border-radius: 10px; background: var(--bg) center/cover no-repeat; display: grid; place-items: center; font: 800 1.1rem var(--f-display); color: var(--muted); border: 1px solid var(--line); }
+.row .txt { min-width: 0; }
+.row .name { font-weight: 600; overflow-wrap: anywhere; display: block; }
+.row .meta { font-size: .84rem; color: var(--muted); overflow-wrap: anywhere; display: block; }
+.row .qty { font: 500 .78rem var(--f-mono); color: var(--muted); text-align: right; max-width: 7.5em; overflow-wrap: anywhere; }
+.row .ex { font: 500 .66rem var(--f-mono); text-transform: uppercase; letter-spacing: .06em; color: var(--tape-ink); background: var(--tape); padding: 1px 5px; border-radius: 3px; margin-left: 6px; vertical-align: 2px; }
+mark { background: var(--mark); color: inherit; border-radius: 3px; padding: 0 1px; }
+.empty { text-align: center; padding: 48px 12px 24px; color: var(--muted); }
+.empty h2 { font: 800 1.35rem var(--f-display); color: var(--ink); margin: 0 0 6px; text-wrap: balance; }
+.empty p { margin: 0 auto; max-width: 34ch; }
+.shelf-art { width: 140px; height: 96px; margin: 0 auto 18px; display: block; }
+
+/* Bottom bar */
+.bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); background: linear-gradient(to top, var(--bg) 70%, transparent); }
+.bar .wrap { display: flex; gap: 10px; padding-inline: 0; }
+.btn { border: 0; border-radius: 999px; padding: 15px 20px; font-weight: 600; font-size: 1rem; display: inline-flex; align-items: center; justify-content: center; gap: 10px; text-decoration: none; }
+.btn-primary { background: var(--accent); color: var(--accent-ink); box-shadow: var(--shadow); flex: 1; }
+.btn-ghost { background: var(--surface); color: var(--ink); border: 1.5px solid var(--line); }
+.btn-danger { background: transparent; color: var(--danger); border: 1.5px solid currentColor; }
+.btn[disabled] { opacity: .5; cursor: default; }
+.btn svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 2; }
+label.btn { cursor: pointer; }
+
+/* Sheets */
+.scrim { position: fixed; inset: 0; z-index: 10; background: rgba(8, 14, 11, .45); display: flex; align-items: flex-end; justify-content: center; }
+.sheet { background: var(--surface); width: 100%; max-width: 640px; max-height: 92%; overflow-y: auto; -webkit-overflow-scrolling: touch; border-radius: 22px 22px 0 0; padding: 10px 16px calc(20px + env(safe-area-inset-bottom, 0px)); box-shadow: var(--shadow); }
+.grab { width: 40px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto 12px; }
+.sheet h2 { font: 800 1.3rem var(--f-display); margin: 0 0 12px; letter-spacing: -.01em; }
+.sheet h3 { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 22px 0 4px; }
+.sheet p.note { font-size: .9rem; color: var(--muted); margin: 6px 0 0; }
+.sheet p.note a { color: var(--accent); }
+.sheet-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.x { border: 0; background: var(--bg); width: 36px; height: 36px; border-radius: 50%; font-size: 20px; flex: none; }
+.photo { width: 100%; max-height: 38vh; object-fit: cover; border-radius: var(--r); display: block; background: var(--bg); }
+.field { display: grid; gap: 4px; margin-top: 12px; }
+.field label { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.field input, .field select, .field textarea { width: 100%; padding: 11px 12px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--bg); font-size: 16px; min-height: 46px; }
+.field input:focus, .field select:focus, .field textarea:focus { border-color: var(--accent); outline: none; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.two .field { min-width: 0; }
+.status { margin-top: 14px; padding: 12px 14px; border-radius: var(--r); background: var(--bg); color: var(--muted); font-size: .94rem; display: flex; gap: 10px; align-items: center; }
+.status.err { color: var(--danger); }
+.spin { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid var(--line); border-top-color: var(--accent); animation: spin .8s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation-duration: 3s; } }
+.found { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 8px; }
+.found li { display: grid; grid-template-columns: 28px 1fr; gap: 10px; align-items: start; padding: 10px; border: 1px solid var(--line); border-radius: 12px; }
+.found li.off { opacity: .45; }
+.found input[type=checkbox] { width: 22px; height: 22px; margin-top: 8px; accent-color: var(--accent); }
+.found .f { display: grid; gap: 6px; min-width: 0; }
+.found .f input, .found .f select { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); font-size: 16px; min-width: 0; }
+.found .f .nm { font-weight: 600; }
+.found .sub { display: grid; grid-template-columns: 1.2fr 1fr; gap: 6px; }
+.found .pos { font-size: .82rem; color: var(--muted); }
+.actions { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+.actions .btn { flex: 1 1 auto; }
+.toast { position: fixed; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 20; background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-weight: 500; font-size: .92rem; box-shadow: var(--shadow); max-width: calc(100% - 32px); text-align: center; }
+.where { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: .92rem; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <h1>Vorratsfinder</h1>
+      <div class="right">
+        <span class="count" id="count">lädt …</span>
+        <button class="gear" id="setBtn" aria-label="Einstellungen">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg>
+        </button>
+      </div>
+    </div>
+    <div class="search">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+      <input id="q" type="search" placeholder="Was suchst du? z. B. Linsen, Zimt" autocomplete="off" enterkeyhint="search" aria-label="Vorräte durchsuchen">
+      <button class="clear" id="qClear" aria-label="Suche leeren" hidden>×</button>
+    </div>
+    <div class="chips" id="chips" role="toolbar" aria-label="Kategorien"></div>
+  </div>
+</header>
+
+<main class="wrap" id="main">
+  <div id="banner"></div>
+  <div id="list"></div>
+</main>
+
+<div class="bar">
+  <div class="wrap">
+    <label class="btn btn-primary" for="cam">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"></path><circle cx="12" cy="13" r="3.5"></circle></svg>
+      Schrank fotografieren
+    </label>
+    <button class="btn btn-ghost" id="addBtn" aria-label="Artikel von Hand hinzufügen">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+    </button>
+  </div>
+</div>
+<input type="file" id="cam" accept="image/*" capture="environment" hidden>
+<input type="file" id="lib" accept="image/*" hidden>
+<input type="file" id="importFile" accept="application/json,.json" hidden>
+
+<div class="scrim" id="scanScrim" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="scanTitle">
+    <div class="grab"></div>
+    <div class="sheet-head"><h2 id="scanTitle">Neues Foto</h2><button class="x" data-close="scanScrim" aria-label="Schließen">×</button></div>
+    <img class="photo" id="scanImg" alt="Aufgenommenes Foto">
+    <div class="field">
+      <label for="scanLoc">Wo ist das?</label>
+      <input id="scanLoc" list="locs" placeholder="z. B. Küche · Oberschrank links">
+    </div>
+    <div class="status" id="scanStatus"></div>
+    <ul class="found" id="found"></ul>
+    <div class="actions">
+      <label class="btn btn-ghost" for="lib">Anderes Foto</label>
+      <button class="btn btn-primary" id="scanSave" disabled>Speichern</button>
+    </div>
+  </div>
+</div>
+
+<div class="scrim" id="itemScrim" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="itemTitle">
+    <div class="grab"></div>
+    <div class="sheet-head"><h2 id="itemTitle">Artikel</h2><button class="x" data-close="itemScrim" aria-label="Schließen">×</button></div>
+    <img class="photo" id="itemImg" alt="Foto vom Schrank" hidden>
+    <div class="where" id="itemWhere"></div>
+    <div class="field"><label for="iName">Name</label><input id="iName"></div>
+    <div class="two">
+      <div class="field"><label for="iBrand">Marke</label><input id="iBrand"></div>
+      <div class="field"><label for="iQty">Menge</label><input id="iQty"></div>
+    </div>
+    <div class="two">
+      <div class="field"><label for="iCat">Kategorie</label><select id="iCat"></select></div>
+      <div class="field"><label for="iExp">Haltbar bis</label><input id="iExp" type="date"></div>
+    </div>
+    <div class="field"><label for="iLoc">Ort</label><input id="iLoc" list="locs"></div>
+    <div class="field"><label for="iPos">Position im Schrank</label><input id="iPos" placeholder="z. B. oberes Fach, hinten rechts"></div>
+    <div class="actions">
+      <button class="btn btn-danger" id="iDel">Aufgebraucht</button>
+      <button class="btn btn-primary" id="iSave">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<div class="scrim" id="setScrim" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="setTitle">
+    <div class="grab"></div>
+    <div class="sheet-head"><h2 id="setTitle">Einstellungen</h2><button class="x" data-close="setScrim" aria-label="Schließen">×</button></div>
+    <h3>Bilderkennung</h3>
+    <div class="field">
+      <label for="apiKey">Claude API-Schlüssel</label>
+      <input id="apiKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-ant-…">
+    </div>
+    <p class="note">Den Schlüssel erstellst du unter <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>. Er bleibt nur auf diesem Gerät gespeichert und wird ausschließlich an die Claude-API gesendet. Pro Foto fallen wenige Rappen Kosten an.</p>
+    <div class="actions"><button class="btn btn-primary" id="keySave">Schlüssel speichern</button></div>
+    <h3>Daten sichern</h3>
+    <p class="note">Alle Artikel und Fotos liegen nur in diesem Browser. Lege die App auf den Home-Bildschirm und sichere regelmäßig, damit nichts verloren geht.</p>
+    <p class="note" id="storeInfo"></p>
+    <div class="actions">
+      <button class="btn btn-ghost" id="exportBtn">Sicherung exportieren</button>
+      <label class="btn btn-ghost" for="importFile">Sicherung laden</label>
+    </div>
+  </div>
+</div>
+
+<datalist id="locs"></datalist>
+<div class="toast" id="toast" hidden></div>
+
+<script type="module">
+const SDK_URL = "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.128.0/+esm";
+const MODEL = "claude-opus-5-5";
+const CATS = ["Konserven", "Nudeln & Reis", "Hülsenfrüchte", "Backen", "Gewürze", "Saucen & Öle", "Frühstück", "Snacks & Süßes", "Getränke", "Kühlware", "Tiefkühl", "Obst & Gemüse", "Haushalt", "Sonstiges"];
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const norm = (s) => String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/ß/g, "ss");
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+
+/* ---------- IndexedDB: items + photos, all on this device ---------- */
+const idb = {
+  db: null,
+  open() {
+    return new Promise((res, rej) => {
+      const r = indexedDB.open("vorratsfinder", 1);
+      r.onupgradeneeded = () => {
+        const d = r.result;
+        if (!d.objectStoreNames.contains("items")) d.createObjectStore("items", { keyPath: "id" });
+        if (!d.objectStoreNames.contains("photos")) d.createObjectStore("photos");
+      };
+      r.onsuccess = () => { this.db = r.result; res(); };
+      r.onerror = () => rej(r.error);
+    });
+  },
+  tx(name, mode, fn) {
+    return new Promise((res, rej) => {
+      const t = this.db.transaction(name, mode);
+      const out = fn(t.objectStore(name));
+      t.oncomplete = () => res(out?.result ?? out);
+      t.onerror = () => rej(t.error);
+      t.onabort = () => rej(t.error);
+    });
+  },
+  allItems() { return this.tx("items", "readonly", (s) => s.getAll()); },
+  putItems(arr) { return this.tx("items", "readwrite", (s) => { arr.forEach((i) => s.put(i)); }); },
+  delItem(id) { return this.tx("items", "readwrite", (s) => { s.delete(id); }); },
+  putPhoto(id, blob) { return this.tx("photos", "readwrite", (s) => { s.put(blob, id); }); },
+  getPhoto(id) { return this.tx("photos", "readonly", (s) => s.get(id)); },
+  allPhotoKeys() { return this.tx("photos", "readonly", (s) => s.getAllKeys()); },
+};
+
+let items = [];
+let loaded = false, dbOk = true;
+let cat = "";
+let editing = null;
+let scan = null;
+const photoUrls = new Map();
+
+async function reload() {
+  items = dbOk ? await idb.allItems() : [];
+  items.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  loaded = true;
+  renderAll();
+  hydrateThumbs();
+}
+
+/* Photo blobs → object URLs, created once per photo and reused. */
+async function photoUrl(id) {
+  if (!id) return null;
+  if (photoUrls.has(id)) return photoUrls.get(id);
+  const blob = await idb.getPhoto(id).catch(() => null);
+  const url = blob ? URL.createObjectURL(blob) : null;
+  photoUrls.set(id, url);
+  return url;
+}
+async function hydrateThumbs() {
+  for (const el of document.querySelectorAll(".thumb[data-photo]")) {
+    const url = await photoUrl(el.dataset.photo);
+    if (url) { el.style.backgroundImage = `url("${url}")`; el.textContent = ""; }
+  }
+}
+
+/* ---------- toast ---------- */
+let toastT;
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.hidden = false;
+  clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 2800);
+}
+
+/* ---------- chips & selects ---------- */
+function renderChips() {
+  const present = new Set(items.map((i) => i.category));
+  const list = ["", ...CATS.filter((c) => present.has(c))];
+  if (cat && !present.has(cat)) cat = "";
+  $("chips").innerHTML = list.map((c) =>
+    `<button class="chip" data-cat="${esc(c)}" aria-pressed="${c === cat}">${c ? esc(c) : "Alle"}</button>`).join("");
+}
+$("chips").addEventListener("click", (e) => {
+  const b = e.target.closest(".chip"); if (!b) return;
+  cat = b.dataset.cat; renderChips(); renderList();
+});
+const catOptions = (sel) => CATS.map((c) => `<option${c === sel ? " selected" : ""}>${esc(c)}</option>`).join("");
+
+function renderLocs() {
+  const locs = [...new Set(items.map((i) => i.location).filter(Boolean))].sort((a, b) => a.localeCompare(b, "de"));
+  $("locs").innerHTML = locs.map((l) => `<option value="${esc(l)}"></option>`).join("");
+}
+
+/* ---------- search ---------- */
+const hayCache = new WeakMap();
+function haystack(i) {
+  if (!hayCache.has(i)) hayCache.set(i, norm([i.name, i.brand, i.category, i.location, i.position, i.qty, ...(i.tags || [])].join(" ")));
+  return hayCache.get(i);
+}
+function score(i, terms) {
+  const name = norm(i.name), hay = haystack(i);
+  let s = 0;
+  for (const t of terms) {
+    if (!hay.includes(t)) return -1;
+    if (name.startsWith(t)) s += 5; else if (name.includes(t)) s += 3; else s += 1;
+  }
+  return s;
+}
+function hl(text, terms) {
+  const src = String(text ?? "");
+  if (!terms.length || !src) return esc(src);
+  const n = norm(src);
+  if (n.length !== src.length) return esc(src);
+  const marks = new Array(src.length).fill(false);
+  for (const t of terms) { let p = n.indexOf(t); while (p >= 0) { for (let k = p; k < p + t.length; k++) marks[k] = true; p = n.indexOf(t, p + 1); } }
+  let out = "", open = false;
+  for (let k = 0; k < src.length; k++) {
+    if (marks[k] && !open) { out += "<mark>"; open = true; }
+    if (!marks[k] && open) { out += "</mark>"; open = false; }
+    out += esc(src[k]);
+  }
+  return out + (open ? "</mark>" : "");
+}
+
+/* ---------- list ---------- */
+function thumb(i) {
+  const letter = esc((i.name || "?").trim().charAt(0).toUpperCase());
+  return i.photo ? `<span class="thumb" data-photo="${esc(i.photo)}">${letter}</span>` : `<span class="thumb">${letter}</span>`;
+}
+function rowHtml(i, terms) {
+  const meta = [i.brand, i.position].filter(Boolean).map((m) => hl(m, terms)).join(" · ");
+  const exp = i.expires ? ` · bis ${new Date(i.expires + "T00:00").toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "2-digit" })}` : "";
+  return `<li><button class="row" data-id="${esc(i.id)}">${thumb(i)}<span class="txt"><span class="name">${hl(i.name, terms)}${i.example ? '<span class="ex">Beispiel</span>' : ""}</span><span class="meta">${meta || esc(i.category)}${esc(exp)}</span></span><span class="qty">${esc(i.qty || "")}</span></button></li>`;
+}
+const shelfSvg = `<svg class="shelf-art" viewBox="0 0 140 96" aria-hidden="true"><rect x="4" y="4" width="132" height="88" rx="6" fill="none" stroke="var(--line)" stroke-width="3"/><path d="M4 48h132" stroke="var(--line)" stroke-width="3"/><rect x="18" y="20" width="16" height="26" rx="3" fill="var(--tape)"/><rect x="40" y="14" width="14" height="32" rx="3" fill="var(--accent)"/><rect x="60" y="26" width="22" height="20" rx="3" fill="var(--muted)" opacity=".5"/><rect x="24" y="62" width="28" height="28" rx="4" fill="var(--muted)" opacity=".35"/><rect x="60" y="66" width="18" height="24" rx="3" fill="var(--tape)" opacity=".8"/><circle cx="104" cy="76" r="12" fill="var(--accent)" opacity=".6"/></svg>`;
+
+function groupHtml(list, terms) {
+  const byLoc = new Map();
+  for (const i of list) { const k = i.location || "Ohne Ort"; if (!byLoc.has(k)) byLoc.set(k, []); byLoc.get(k).push(i); }
+  let groups = [...byLoc];
+  if (!terms.length) {
+    groups.sort((a, b) => a[0].localeCompare(b[0], "de"));
+    groups.forEach(([, arr]) => arr.sort((a, b) => (a.name || "").localeCompare(b.name || "", "de")));
+  }
+  return groups.map(([loc, arr]) =>
+    `<section class="group"><div class="tape"><span>${hl(loc, terms)}</span><b>${arr.length}</b></div><ul class="rows">${arr.map((i) => rowHtml(i, terms)).join("")}</ul></section>`).join("");
+}
+
+function renderList() {
+  const q = $("q").value.trim();
+  $("qClear").hidden = !q;
+  const terms = norm(q).split(/\s+/).filter(Boolean);
+  const pool = cat ? items.filter((i) => i.category === cat) : items;
+  $("count").textContent = loaded ? `${items.length} Artikel` : "lädt …";
+
+  if (!loaded) { $("list").innerHTML = ""; return; }
+  if (!items.length) {
+    $("list").innerHTML = `<div class="empty">${shelfSvg}<h2>Noch nichts erfasst</h2><p>Öffne einen Schrank, tippe auf „Schrank fotografieren“ und gib an, wo er steht. Die Artikel werden erkannt und hier abgelegt.</p>${dbOk ? '<p style="margin-top:14px"><button class="btn btn-ghost" id="seedBtn">Beispiele ansehen</button></p>' : ""}</div>`;
+    if ($("seedBtn")) $("seedBtn").onclick = seedExamples;
+    return;
+  }
+  if (terms.length) {
+    const hits = pool.map((i) => [i, score(i, terms)]).filter(([, s]) => s >= 0).sort((a, b) => b[1] - a[1]).map(([i]) => i);
+    $("list").innerHTML = hits.length ? groupHtml(hits, terms)
+      : `<div class="empty"><h2>Nichts gefunden</h2><p>Kein Artikel passt zu „${esc(q)}“. Versuch einen allgemeineren Begriff wie „Nudeln“ oder „Dose“.</p></div>`;
+  } else {
+    $("list").innerHTML = groupHtml(pool, []);
+  }
+  hydrateThumbs();
+}
+$("q").addEventListener("input", renderList);
+$("qClear").addEventListener("click", () => { $("q").value = ""; renderList(); $("q").focus(); });
+$("list").addEventListener("click", (e) => {
+  const b = e.target.closest(".row"); if (!b) return;
+  const it = items.find((i) => i.id === b.dataset.id); if (it) openItem(it);
+});
+
+function renderBanner() {
+  const ex = items.filter((i) => i.example);
+  let html = "";
+  if (!dbOk) html = `<div class="banner">Dieser Browser erlaubt keine lokale Speicherung (privates Fenster?). Öffne die Seite in einem normalen Safari-Tab.</div>`;
+  else if (!store.get("vf.apiKey") && loaded) html = `<div class="banner"><span>Für die Bilderkennung fehlt noch ein Claude API-Schlüssel.</span><button id="bnKey">Jetzt eintragen</button></div>`;
+  else if (ex.length) html = `<div class="banner"><span>${ex.length} Beispielartikel zeigen, wie die Liste aussieht.</span><button id="rmEx">Beispiele entfernen</button></div>`;
+  $("banner").innerHTML = html;
+  if ($("bnKey")) $("bnKey").onclick = openSettings;
+  if ($("rmEx")) $("rmEx").onclick = async () => {
+    for (const i of ex) await idb.delItem(i.id);
+    toast("Beispiele entfernt"); reload();
+  };
+}
+function renderAll() { renderChips(); renderLocs(); renderBanner(); renderList(); }
+
+async function seedExamples() {
+  const base = Date.now();
+  const ex = [
+    ["Rote Linsen", "", "Hülsenfrüchte", "1 Glas", "oberes Fach, links", ["Linsen", "Dal"], "Küche · Oberschrank links"],
+    ["Spaghetti", "Barilla", "Nudeln & Reis", "2 Packungen", "oberes Fach, Mitte", ["Pasta", "Teigwaren", "Nudeln"], "Küche · Oberschrank links"],
+    ["Kokosmilch", "", "Konserven", "3 Dosen", "unteres Fach, hinten", ["Dose", "Curry", "Kokos"], "Vorratsraum · Regal 2"],
+    ["Zimt gemahlen", "", "Gewürze", "halb voll", "Gewürzbord, rechts", ["Gewürz", "Backen"], "Küche · Gewürzschublade"],
+  ].map(([name, brand, category, qty, position, tags, location], k) =>
+    ({ id: uid(), name, brand, category, qty, position, tags, location, photo: null, expires: "", example: true, createdAt: base + k }));
+  await idb.putItems(ex); reload();
+}
+
+/* ---------- sheets ---------- */
+function openSheet(id) { $(id).hidden = false; document.body.style.overflow = "hidden"; }
+function closeSheet(id) {
+  $(id).hidden = true;
+  if (!document.querySelector(".scrim:not([hidden])")) document.body.style.overflow = "";
+  if (id === "scanScrim" && scan) { scan.ctl.abort(); URL.revokeObjectURL(scan.url); scan = null; }
+}
+document.querySelectorAll("[data-close]").forEach((b) => b.addEventListener("click", () => closeSheet(b.dataset.close)));
+document.querySelectorAll(".scrim").forEach((s) => s.addEventListener("click", (e) => { if (e.target === s) closeSheet(s.id); }));
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") document.querySelectorAll(".scrim:not([hidden])").forEach((s) => closeSheet(s.id)); });
+
+/* ---------- photo → items ---------- */
+async function shrink(file, max = 1568) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = url; });
+    const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement("canvas");
+    c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    return await new Promise((res) => c.toBlob(res, "image/jpeg", 0.82));
+  } finally { URL.revokeObjectURL(url); }
+}
+const blobToDataUrl = (blob) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(blob); });
+
+function setStatus(html, kind) {
+  const s = $("scanStatus"); s.hidden = !html; s.className = "status" + (kind === "err" ? " err" : "");
+  s.innerHTML = (kind === "busy" ? '<span class="spin"></span>' : "") + `<span>${html}</span>`;
+}
+
+const PROMPT = `Das Foto zeigt das Innere eines Vorratsschranks, Regals, Kühlschranks oder einer Schublade in einem Haushalt.
+Erfasse jedes erkennbare Lebensmittel und jeden Haushaltsartikel als eigenen Eintrag. Gleiche Produkte zusammenfassen und die Anzahl in "menge" angeben.
+Antworte NUR mit einem JSON-Array, ohne weiteren Text. Format pro Eintrag:
+{"name":"Spaghetti","marke":"Barilla","kategorie":"Nudeln & Reis","menge":"2 Packungen","position":"oberes Fach, links","stichworte":["Pasta","Teigwaren","Nudeln"]}
+Regeln:
+- "name": kurzer deutscher Produktname, den man suchen würde (z. B. "Rote Linsen", "Kokosmilch", "Zimt gemahlen").
+- "marke": nur wenn lesbar, sonst "".
+- "kategorie": genau eine aus: ${CATS.join(", ")}.
+- "menge": Anzahl und Gebinde, z. B. "1 Glas", "3 Dosen", "halb voll".
+- "position": wo im Schrank, z. B. "unteres Fach, Mitte".
+- "stichworte": 2–5 Synonyme oder Oberbegriffe auf Deutsch für die Suche.
+- Unlesbare Packungen als "Unbekannte Dose"/"Unbekanntes Glas" o. ä. mit Position aufnehmen.
+- Wenn nichts erkennbar ist: [].`;
+
+let sdk = null;
+async function recognize(blob, signal) {
+  const apiKey = store.get("vf.apiKey");
+  if (!apiKey) throw { ui: "Trage zuerst deinen Claude API-Schlüssel in den Einstellungen ein." };
+  if (!sdk) {
+    try { sdk = (await import(SDK_URL)).default; }
+    catch { throw { ui: "Die Claude-Bibliothek konnte nicht geladen werden. Prüfe die Internetverbindung." }; }
+  }
+  const Anthropic = sdk;
+  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
+  const data = (await blobToDataUrl(blob)).split(",")[1];
+  let resp;
+  try {
+    resp = await client.beta.messages.create({
+      model: MODEL,
+      max_tokens: 16000,
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+      output_config: { effort: "medium" },
+      messages: [{
+        role: "user",
+        content: [
+          { type: "image", source: { type: "base64", media_type: "image/jpeg", data } },
+          { type: "text", text: PROMPT },
+        ],
+      }],
+    }, { signal });
+  } catch (e) {
+    if (e instanceof Anthropic.APIUserAbortError) throw { cancelled: true };
+    if (e instanceof Anthropic.AuthenticationError) throw { ui: "Der API-Schlüssel wurde abgelehnt. Prüfe ihn in den Einstellungen." };
+    if (e instanceof Anthropic.PermissionDeniedError) throw { ui: "Dieser API-Schlüssel hat keinen Zugriff auf das Modell." };
+    if (e instanceof Anthropic.RateLimitError) throw { ui: "Gerade zu viele Anfragen. Warte einen Moment und versuch es erneut." };
+    if (e instanceof Anthropic.BadRequestError) throw { ui: "Die Anfrage wurde abgelehnt: " + esc(e.message) };
+    if (e instanceof Anthropic.APIConnectionError) throw { ui: "Keine Verbindung zur Claude-API. Prüfe das Internet und versuch es erneut." };
+    if (e instanceof Anthropic.APIError) throw { ui: `Claude-API-Fehler ${e.status ?? ""}. Versuch es gleich noch einmal.` };
+    throw { ui: "Die Erkennung ist fehlgeschlagen. Versuch es erneut." };
+  }
+  if (resp.stop_reason === "refusal") throw { ui: "Auf diesem Foto konnte nichts erkannt werden. Versuch ein anderes Bild." };
+  const text = resp.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
+  const a = text.indexOf("["), z = text.lastIndexOf("]");
+  try { return a >= 0 && z > a ? JSON.parse(text.slice(a, z + 1)) : []; }
+  catch { throw { ui: "Die Antwort war unvollständig. Tippe auf „Anderes Foto“ und versuch es noch einmal." }; }
+}
+
+async function startScan(file) {
+  if (!file) return;
+  if (scan) { scan.ctl.abort(); URL.revokeObjectURL(scan.url); }
+  const blob = await shrink(file).catch(() => null);
+  if (!blob) { toast("Dieses Bild kann nicht geöffnet werden."); return; }
+  scan = { blob, url: URL.createObjectURL(blob), results: [], ctl: new AbortController() };
+  const mine = scan;
+  $("scanImg").src = scan.url;
+  $("scanLoc").value = store.get("vf.lastLoc") || "";
+  $("found").innerHTML = ""; $("scanSave").disabled = true;
+  openSheet("scanScrim");
+  setStatus("Claude schaut in den Schrank … das dauert meist 10–40 Sekunden.", "busy");
+  try {
+    const res = await recognize(blob, mine.ctl.signal);
+    if (scan !== mine) return;
+    mine.results = (Array.isArray(res) ? res : []).filter((r) => r && r.name).map((r) => ({
+      on: true,
+      name: String(r.name).slice(0, 80),
+      brand: String(r.marke || "").slice(0, 60),
+      category: CATS.includes(r.kategorie) ? r.kategorie : "Sonstiges",
+      qty: String(r.menge || "").slice(0, 40),
+      position: String(r.position || "").slice(0, 80),
+      tags: Array.isArray(r.stichworte) ? r.stichworte.slice(0, 6).map((t) => String(t).slice(0, 30)) : [],
+    }));
+    if (!mine.results.length) { setStatus("Keine Artikel erkannt. Versuch ein helleres Foto aus etwas mehr Abstand.", "err"); return; }
+    setStatus(`${mine.results.length} Artikel erkannt. Prüfe die Namen, entferne Häkchen bei Fehlern und speichere.`);
+    renderFound();
+  } catch (e) {
+    if (scan !== mine || e?.cancelled) return;
+    setStatus(e?.ui || "Die Erkennung ist fehlgeschlagen. Versuch es erneut.", "err");
+  }
+}
+
+function renderFound() {
+  const r = scan?.results || [];
+  $("found").innerHTML = r.map((x, k) => `<li class="${x.on ? "" : "off"}" data-k="${k}">
+    <input type="checkbox" data-f="on" ${x.on ? "checked" : ""} aria-label="${esc(x.name)} übernehmen">
+    <div class="f">
+      <input class="nm" data-f="name" value="${esc(x.name)}" aria-label="Name">
+      <div class="sub"><select data-f="category" aria-label="Kategorie">${catOptions(x.category)}</select><input data-f="qty" value="${esc(x.qty)}" placeholder="Menge" aria-label="Menge"></div>
+      <span class="pos">${esc([x.brand, x.position].filter(Boolean).join(" · "))}</span>
+    </div></li>`).join("");
+  updateSave();
+}
+function updateSave() {
+  const n = (scan?.results || []).filter((x) => x.on && x.name.trim()).length;
+  $("scanSave").disabled = !n || !dbOk;
+  $("scanSave").textContent = n ? `${n} Artikel speichern` : "Speichern";
+}
+function onFoundEdit(e) {
+  const li = e.target.closest("li"); if (!li || !scan) return;
+  const x = scan.results[+li.dataset.k], f = e.target.dataset.f;
+  if (f === "on") { x.on = e.target.checked; li.classList.toggle("off", !x.on); }
+  else if (f) x[f] = e.target.value;
+  updateSave();
+}
+$("found").addEventListener("input", onFoundEdit);
+$("found").addEventListener("change", onFoundEdit);
+
+$("scanSave").addEventListener("click", async () => {
+  if (!scan) return;
+  const loc = $("scanLoc").value.trim();
+  if (!loc) { $("scanLoc").focus(); setStatus("Gib an, wo dieser Schrank steht, damit du die Sachen später findest.", "err"); return; }
+  const mine = scan, chosen = mine.results.filter((x) => x.on && x.name.trim());
+  $("scanSave").disabled = true;
+  setStatus("Speichere …", "busy");
+  store.set("vf.lastLoc", loc);
+  try {
+    const photo = uid();
+    await idb.putPhoto(photo, mine.blob);
+    const now = Date.now();
+    await idb.putItems(chosen.map((x, k) => ({
+      id: uid(), name: x.name.trim(), brand: x.brand, category: x.category, qty: x.qty.trim(), position: x.position,
+      tags: x.tags, location: loc, photo, expires: "", createdAt: now + k,
+    })));
+    closeSheet("scanScrim");
+    toast(`${chosen.length} Artikel in „${loc}“ abgelegt`);
+    reload();
+  } catch (e) {
+    setStatus(e?.name === "QuotaExceededError" ? "Der Gerätespeicher ist voll. Entferne alte Artikel oder exportiere eine Sicherung." : "Speichern fehlgeschlagen. Versuch es erneut.", "err");
+    $("scanSave").disabled = false;
+  }
+});
+
+$("cam").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; startScan(f); });
+$("lib").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; startScan(f); });
+
+/* ---------- item sheet ---------- */
+let delArmed = false;
+async function openItem(i) {
+  editing = i; delArmed = false;
+  $("iDel").textContent = "Aufgebraucht";
+  $("itemTitle").textContent = i.name || "Artikel";
+  $("itemImg").hidden = true;
+  if (i.photo) photoUrl(i.photo).then((u) => { if (u && editing === i) { $("itemImg").src = u; $("itemImg").hidden = false; } });
+  $("itemWhere").innerHTML = i.location ? `<span class="tape"><span>${esc(i.location)}</span></span>${i.position ? `<span>${esc(i.position)}</span>` : ""}` : "";
+  $("iName").value = i.name || ""; $("iBrand").value = i.brand || ""; $("iQty").value = i.qty || "";
+  $("iCat").innerHTML = catOptions(i.category || "Sonstiges");
+  $("iExp").value = i.expires || ""; $("iLoc").value = i.location || ""; $("iPos").value = i.position || "";
+  $("iDel").hidden = !i.id;
+  openSheet("itemScrim");
+}
+$("addBtn").addEventListener("click", () => {
+  openItem({ id: null, name: "", category: "Sonstiges", location: store.get("vf.lastLoc") || "" });
+  $("itemTitle").textContent = "Artikel hinzufügen";
+  setTimeout(() => $("iName").focus(), 50);
+});
+$("iSave").addEventListener("click", async () => {
+  const name = $("iName").value.trim();
+  if (!name) { $("iName").focus(); return; }
+  const data = { name, brand: $("iBrand").value.trim(), qty: $("iQty").value.trim(), category: $("iCat").value,
+    expires: $("iExp").value, location: $("iLoc").value.trim(), position: $("iPos").value.trim() };
+  $("iSave").disabled = true;
+  try {
+    if (editing.id) await idb.putItems([{ ...editing, ...data, example: false }]);
+    else {
+      await idb.putItems([{ id: uid(), ...data, tags: [], photo: null, createdAt: Date.now() }]);
+      if (data.location) store.set("vf.lastLoc", data.location);
+    }
+    closeSheet("itemScrim"); toast("Gespeichert"); reload();
+  } catch { toast("Speichern fehlgeschlagen. Versuch es erneut."); }
+  finally { $("iSave").disabled = false; }
+});
+$("iDel").addEventListener("click", async () => {
+  if (!delArmed) { delArmed = true; $("iDel").textContent = "Wirklich entfernen?"; return; }
+  try { await idb.delItem(editing.id); closeSheet("itemScrim"); toast(`„${editing.name}“ entfernt`); reload(); }
+  catch { toast("Entfernen fehlgeschlagen."); }
+});
+
+/* ---------- settings, backup ---------- */
+async function openSettings() {
+  $("apiKey").value = store.get("vf.apiKey") || "";
+  $("storeInfo").textContent = "";
+  openSheet("setScrim");
+  try {
+    const est = await navigator.storage?.estimate?.();
+    const persisted = await navigator.storage?.persisted?.();
+    if (est) $("storeInfo").textContent = `Belegt: ${(est.usage / 1048576).toFixed(1)} MB${persisted ? " · dauerhaft gespeichert" : ""}.`;
+  } catch {}
+}
+$("setBtn").addEventListener("click", openSettings);
+$("keySave").addEventListener("click", () => {
+  const k = $("apiKey").value.trim();
+  store.set("vf.apiKey", k);
+  closeSheet("setScrim"); toast(k ? "Schlüssel gespeichert" : "Schlüssel entfernt"); renderBanner();
+});
+$("exportBtn").addEventListener("click", async () => {
+  const btn = $("exportBtn"); btn.disabled = true;
+  try {
+    const photos = {};
+    const used = new Set(items.map((i) => i.photo).filter(Boolean));
+    for (const id of used) { const b = await idb.getPhoto(id).catch(() => null); if (b) photos[id] = await blobToDataUrl(b); }
+    const json = JSON.stringify({ app: "vorratsfinder", version: 1, exportedAt: new Date().toISOString(), items, photos });
+    const blob = new Blob([json], { type: "application/json" });
+    const name = `vorratsfinder-${new Date().toISOString().slice(0, 10)}.json`;
+    const file = new File([blob], name, { type: "application/json" });
+    if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], title: "Vorratsfinder-Sicherung" });
+    else { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
+  } catch (e) { if (e?.name !== "AbortError") toast("Export fehlgeschlagen."); }
+  finally { btn.disabled = false; }
+});
+$("importFile").addEventListener("change", async (e) => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  try {
+    const j = JSON.parse(await f.text());
+    if (j.app !== "vorratsfinder" || !Array.isArray(j.items)) throw 0;
+    for (const [id, url] of Object.entries(j.photos || {})) {
+      const blob = await (await fetch(url)).blob();
+      await idb.putPhoto(id, blob);
+    }
+    await idb.putItems(j.items.filter((i) => i && i.id && i.name));
+    closeSheet("setScrim"); toast(`${j.items.length} Artikel geladen`); reload();
+  } catch { toast("Diese Datei ist keine Vorratsfinder-Sicherung."); }
+});
+
+/* ---------- boot ---------- */
+renderAll();
+try { await idb.open(); } catch { dbOk = false; }
+navigator.storage?.persist?.().catch(() => {});
+await reload();
+</script>
+</body>
+</html>
